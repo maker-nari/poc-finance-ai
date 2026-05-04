@@ -1,5 +1,8 @@
 # 📑 AI 월말 정산 도우미 POC 프로토타입
 
+### 🚀 [실시간 라이브 데모 바로가기](https://poc-finance-ai.streamlit.app/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://poc-finance-ai.streamlit.app/)
+
 > **"AI 초안과 담당자의 검토를 결합하여, 3일 걸리던 월말 정산표 작성을 1일 이내로 단축합니다."**
 
 이 프로젝트는 엑셀/CSV로 업로드된 지출 내역과 증빙 자료를 AI가 자동으로 매칭하고, 계정과목 초안을 제안하여 회계 담당자의 업무 효율성을 검증하기 위한 **POC(Proof of Concept)용 프로토타입**입니다.
@@ -45,7 +48,11 @@
 
 ## 🚀 실행 방법
 
-### 로컬 환경 실행
+### 1. 웹에서 바로 실행 (권장)
+아래 링크를 클릭하면 별도의 설치 없이 브라우저에서 바로 확인하실 수 있습니다.
+👉 **[https://poc-finance-ai.streamlit.app/](https://poc-finance-ai.streamlit.app/)**
+
+### 2. 로컬 환경 실행
 1. 저장소를 클론합니다.
 ```bash
 git clone https://github.com/your-username/poc-finance-ai.git
@@ -75,11 +82,6 @@ project/
     └── 계정과목 기준표.csv
 ```
 
-### 필수 데이터 필드
-- **지출내역**: 거래일자, 거래처명, 금액, 사용자, 사용부서
-- **증빙자료**: 파일명, 거래일자, 거래처명, 금액
-- **계정과목 기준표**: 거래처 키워드, 비용 항목, 계정과목
-
 ---
 
 ## 💡 주의사항 (Disclaimer)
@@ -90,9 +92,7 @@ project/
 ---
 
 ## 📧 연락처
-프로젝트 및 POC 결과에 대한 문의는 아래로 연락 부탁드립니다.
 - **담당자**: 이지영
 - **이메일**: makernari@gmail.com
-
 ---
 *Powered by Python & Streamlit*
