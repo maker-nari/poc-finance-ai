@@ -9,7 +9,6 @@ st.set_page_config(page_title="월말 정산표 초안 작성 POC", layout="wide
 
 # --- 경로 및 파일명 설정 ---
 SAMPLE_DIR = "샘플데이터"
-# 파일명이 실제 폴더 내 파일명과 정확히 일치해야 합니다.
 FILE_PATHS = {
     "지출내역": os.path.join(SAMPLE_DIR, "지출내역.csv"),
     "증빙자료": os.path.join(SAMPLE_DIR, "증빙자료.csv"),
@@ -35,26 +34,23 @@ def safe_read_csv(path):
 def run_ai_analysis(exp_df, rec_df, rule_df):
     start_time = time.time()
     
-    # 1. 취합 및 증빙 매칭 (거래일자, 거래처명, 금액 기준)
+    # 1. 취합 및 증빙 매칭
     merged = pd.merge(exp_df, rec_df, on=['거래일자', '거래처명', '금액'], how='left')
     
     def check_status(row):
-        if pd.notnull(row['파일명']): return "일치 (증빙확인)"
-        return "누락 의심 (증빙없음)"
+        if pd.notnull(row['파일명']): return "증빙 완료"
+        return "증빙 누락"
     
     merged['매칭상태'] = merged.apply(check_status, axis=1)
-    merged['누락판단근거'] = merged['매칭상태'].apply(lambda x: "증빙 파일 매칭 실패" if "누락" in x else "정상 매칭")
 
     # 2. 계정과목 분류 (AI Mock 로직)
     def classify_account(row):
         merchant = str(row['거래처명'])
-        # 기준표 매칭 로직
         if rule_df is not None:
             for _, r in rule_df.iterrows():
                 if str(r['거래처 키워드']) in merchant:
                     return r['비용 항목'], r['계정과목'], 0.95
         
-        # 기본 규칙 (Fallback)
         if any(k in merchant for k in ['식당', '민족', '바게뜨']): return '복리후생비', '81100', 0.80
         if any(k in merchant for k in ['택시', 'T', '우버']): return '여비교통비', '81400', 0.85
         return '검토 필요', '미분류', 0.50
@@ -64,7 +60,7 @@ def run_ai_analysis(exp_df, rec_df, rule_df):
     merged['AI계정과목'] = results[1]
     merged['신뢰도'] = results[2]
     
-    # 사용자 수정용 컬럼
+    # 초기 수정값 세팅
     merged['수정_비용항목'] = merged['AI비용항목']
     merged['수정_계정과목'] = merged['AI계정과목']
     
@@ -72,7 +68,7 @@ def run_ai_analysis(exp_df, rec_df, rule_df):
 
 # --- UI 레이아웃 ---
 st.title("📂 월말 정산표 초안 작성 POC 프로토타입")
-st.info("이 프로토타입은 회계 판단을 자동화하지 않습니다. 모든 결과는 담당자의 검토가 필요합니다.")
+st.info("💡 **안내:** AI 분석 결과는 초안일 뿐이며, 최종 회계 판단은 담당자가 수행해야 합니다.")
 
 # 1. 데이터 입력 섹션
 st.header("1. 데이터 입력")
@@ -85,107 +81,99 @@ with col2:
 with col3:
     rule_file = st.file_uploader("계정과목 기준표 (선택)", type=['csv', 'xlsx'])
 
-# 샘플 데이터 불러오기 버튼
 if st.button("📁 '샘플데이터' 폴더 파일 로드"):
-    if os.path.exists(FILE_PATHS["지출내역"]) and os.path.exists(FILE_PATHS["증빙자료"]):
+    if os.path.exists(FILE_PATHS["지출내역"]):
         st.session_state.exp_df = safe_read_csv(FILE_PATHS["지출내역"])
         st.session_state.rec_df = safe_read_csv(FILE_PATHS["증빙자료"])
         if os.path.exists(FILE_PATHS["계정과목"]):
             st.session_state.rule_df = safe_read_csv(FILE_PATHS["계정과목"])
-        st.success("데이터를 성공적으로 불러왔습니다. 아래에서 확인하세요.")
+        st.success("데이터 로드 완료")
     else:
-        st.error(f"파일을 찾을 수 없습니다. 경로를 확인하세요: {SAMPLE_DIR}")
+        st.error("파일을 찾을 수 없습니다.")
 
-# 파일 업로드 시 세션에 저장
 if exp_file: st.session_state.exp_df = pd.read_csv(exp_file) if exp_file.name.endswith('csv') else pd.read_excel(exp_file)
 if rec_file: st.session_state.rec_df = pd.read_csv(rec_file) if rec_file.name.endswith('csv') else pd.read_excel(rec_file)
 if rule_file: st.session_state.rule_df = pd.read_csv(rule_file) if rule_file.name.endswith('csv') else pd.read_excel(rule_file)
 
-# 2. 데이터 미리보기 (데이터가 세션에 있을 때만 표시)
+# 2. 데이터 미리보기 및 분석 실행
 if st.session_state.exp_df is not None:
-    with st.expander("입력 데이터 미리보기", expanded=True):
-        c1, c2, c3 = st.tabs(["지출 내역", "증빙 자료", "계정과목 기준표"])
-        with c1: st.dataframe(st.session_state.exp_df, use_container_width=True)
-        with c2: st.dataframe(st.session_state.rec_df, use_container_width=True)
-        with c3:
-            if st.session_state.rule_df is not None:
-                st.dataframe(st.session_state.rule_df, use_container_width=True)
-            else:
-                st.info("로드된 계정과목 기준표가 없습니다.")
+    with st.expander("입력 데이터 미리보기"):
+        t1, t2, t3 = st.tabs(["지출 내역", "증빙 자료", "계정과목 기준표"])
+        with t1: st.dataframe(st.session_state.exp_df, use_container_width=True)
+        with t2: st.dataframe(st.session_state.rec_df, use_container_width=True)
+        with t3: st.dataframe(st.session_state.rule_df if st.session_state.rule_df is not None else pd.DataFrame(), use_container_width=True)
 
-    # 3. AI 분석 실행 버튼
     if st.button("🤖 AI 초안 생성 시작", type="primary"):
-        with st.spinner("분석 중..."):
-            processed_df, p_time = run_ai_analysis(
-                st.session_state.exp_df, 
-                st.session_state.rec_df, 
-                st.session_state.rule_df
-            )
-            st.session_state.processed_data = processed_df
-            st.session_state.process_time = p_time
-            st.session_state.analysis_done = True
-        st.balloons()
+        res, p_time = run_ai_analysis(st.session_state.exp_df, st.session_state.rec_df, st.session_state.rule_df)
+        st.session_state.processed_data = res
+        st.session_state.process_time = p_time
+        st.session_state.analysis_done = True
 
-# 4. 분석 결과 및 사용자 검토
+# 3. 사용자 검토 및 수정
 if st.session_state.analysis_done:
+    st.header("2. AI 초안 검토 및 수정")
     df = st.session_state.processed_data
-    st.header("2. AI 분석 결과 및 사용자 검토")
     
-    tab1, tab2, tab3 = st.tabs(["📋 전체 취합 목록", "⚠️ 누락 의심 항목", "🔍 분류 초안 수정"])
+    st.markdown("##### 🔍 상세 검토 테이블")
+    st.caption("수정 항목 컬럼을 더블 클릭하여 내용을 변경할 수 있습니다.")
     
-    with tab1:
-        st.dataframe(df[['거래일자', '거래처명', '금액', '매칭상태', 'AI비용항목', 'AI계정과목']], use_container_width=True)
+    # 수정 가능한 테이블 (data_editor)
+    edited_df = st.data_editor(
+        df[['거래일자', '거래처명', '금액', '사용부서', '사용자', '매칭상태', 'AI비용항목', '수정_비용항목', 'AI계정과목', '수정_계정과목', '신뢰도']],
+        use_container_width=True,
+        column_config={
+            "신뢰도": st.column_config.ProgressColumn("AI신뢰도", format="%.2f", min_value=0, max_value=1),
+            "수정_비용항목": st.column_config.TextColumn("수정_비용항목 (최종)"),
+            "수정_계정과목": st.column_config.TextColumn("수정_계정과목 (최종)")
+        }
+    )
     
-    with tab2:
-        missing = df[df['매칭상태'].str.contains("누락")]
-        st.warning(f"누락 의심 항목 {len(missing)}건이 발견되었습니다.")
-        st.table(missing[['거래일자', '거래처명', '금액', '사용자', '누락판단근거']])
-        
-    with tab3:
-        st.markdown("##### 📝 항목 수정")
-        edited_df = st.data_editor(
-            df[['거래일자', '거래처명', '금액', 'AI비용항목', '수정_비용항목', 'AI계정과목', '수정_계정과목', '신뢰도']],
-            use_container_width=True,
-            key="editor"
-        )
-        if st.button("수정 사항 확정 저장"):
-            st.session_state.processed_data.update(edited_df)
-            st.toast("변경 사항이 저장되었습니다.")
+    if st.button("✅ 검토 완료 및 데이터 반영"):
+        st.session_state.processed_data.update(edited_df)
+        st.success("사용자 수정 사항이 반영되었습니다. 아래에서 최종 정산표를 확인하세요.")
 
-    # 5. 성과 대시보드
+    # 4. 최종 정산표 미리보기 (NEW)
     st.divider()
-    st.header("3. POC 성과 대시보드")
+    st.header("3. 최종 정산표 초안 미리보기")
+    
+    # 최종적으로 필요한 컬럼만 추출 및 이름 변경
+    final_cols = ['거래일자', '거래처명', '금액', '사용부서', '사용자', '매칭상태', '수정_비용항목', '수정_계정과목']
+    final_df = st.session_state.processed_data[final_cols].copy()
+    final_df.columns = ['거래일자', '거래처명', '금액', '사용부서', '사용자', '증빙여부', '비용항목(확정)', '계정과목(확정)']
+    
+    st.markdown("##### 📋 확정된 정산 데이터")
+    st.dataframe(final_df, use_container_width=True)
+
+    # 5. POC 성과 대시보드
+    st.divider()
+    st.header("4. POC 성과 대시보드")
     
     total = len(df)
-    modified_count = (df['AI비용항목'] != df['수정_비용항목']).sum()
-    mod_rate = (modified_count / total * 100)
+    mod_count = (df['AI비용항목'] != df['수정_비용항목']).sum()
+    mod_rate = (mod_count / total * 100)
+    missing_count = (df['매칭상태'] == "증빙 누락").sum()
     
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    col_m1.metric("전체 건수", f"{total}건")
-    col_m2.metric("수정 비율", f"{mod_rate:.1f}%", delta="-30% 목표")
-    col_m3.metric("처리 시간", f"{st.session_state.process_time}초")
-    col_m4.metric("누락 의심", f"{len(missing)}건")
-    
-    # 성과 판정 섹션
-    st.subheader("🎯 최종 성과 판정")
-    res_c1, res_c2 = st.columns(2)
-    with res_c1:
-        precision_input = st.number_input("실제 누락 확인 건수 (사용자 검토 결과)", value=len(missing))
-        sat_score = st.slider("업무 효율 만족도 (1~5점)", 1, 5, 4)
-    
-    with res_c2:
-        precision = (precision_input / len(missing) * 100) if len(missing) > 0 else 100
-        kr_checks = [mod_rate <= 30, precision >= 70, sat_score >= 4]
-        success_count = sum(kr_checks)
-        
-        if success_count >= 2:
-            st.success(f"### 결과: 확산 검토 추천 ({success_count}/3 달성)")
-        else:
-            st.error(f"### 결과: 보완 필요 ({success_count}/3 달성)")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("전체 건수", f"{total}건")
+    m2.metric("수정 비율", f"{mod_rate:.1f}%", delta="-30% 목표")
+    m3.metric("처리 시간", f"{st.session_state.process_time}초")
+    m4.metric("증빙 누락", f"{missing_count}건")
 
+    # OKR 판정
+    st.subheader("🎯 달성 여부")
+    sat = st.slider("업무 효율 체감 점수 (1~5)", 1, 5, 4)
+    
+    kr_status = [mod_rate <= 30, st.session_state.process_time < 10, sat >= 4]
+    score = sum(kr_status)
+    
+    if score >= 2: st.success(f"**판정: 확산 검토** (KR {score}/3 달성)")
+    else: st.error(f"**판정: 재실험 필요** (KR {score}/3 달성)")
+
+    # 다운로드 버튼
+    csv = final_df.to_csv(index=False).encode('utf-8-sig')
     st.download_button(
-        "📥 최종 정산표 다운로드", 
-        st.session_state.processed_data.to_csv(index=False).encode('utf-8-sig'), 
-        "정산표_초안.csv", 
-        "text/csv"
+        label="📥 최종 정산표 CSV 다운로드",
+        data=csv,
+        file_name=f"settlement_final_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime='text/csv'
     )
